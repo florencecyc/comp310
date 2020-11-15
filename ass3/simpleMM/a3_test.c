@@ -40,9 +40,10 @@ int main(int argc, char *argv[])
 	for (i = 0; i < 32; i++)
 	{
 		c[i] = (char *)sma_malloc(1024);
-		// sprintf(str, "c[i]: %p", c[i]);
-		// puts(str);
+		sprintf(str, "c[%d]: %p", i, c[i]);
+		puts(str);
 	}
+    return (0);
 
 	// Now deallocating some of the slots ..to free
 	for (i = 10; i < 18; i++)
@@ -62,8 +63,6 @@ int main(int argc, char *argv[])
 		puts("\t\t\t\t PASSED\n");
 	else
 		puts("\t\t\t\t FAILED\n");
-
-	return (0);
 
 	// Test 2: Program Break expansion Test
 	puts("Test 2: Program break expansion test...");
