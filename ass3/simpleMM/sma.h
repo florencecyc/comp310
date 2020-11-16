@@ -17,16 +17,15 @@ void sma_mallinfo();
 void *sma_realloc(void *ptr, int size);
 
 //  Private Functions declaration
-static void* allocate_pBrk(int size);
-static void* allocate_freeList(int size);
-static void* allocate_worst_fit(int size);
-static void* allocate_next_fit(int size);
-static void* allocate_block(int size, int excessSize, int fromFreeList);
-static void replace_block_freeList(void *oldBlock, void *newBlock);
-static void add_block_freeList(void *block);
-static void remove_block_freeList(void *block);
-static int get_largest_freeBlock();
+static void *allocate_from_sbrk(int size);
+static void *allocate_from_freeList(int size);
+static void set_new_block_config(void *block, int size);
+static void set_free_block_config(void *block, int size, void *prev, void *next);
+static void *allocate_worst_fit(int size);
+static void *allocate_next_fit(int size);
+static void *get_largest_free_block();
+static void *replace_free_block(void *freeBlock, int newBlockSize);
+
 static void *get_block_size(void *ptr);
-static void *get_block_state(void *ptr);
 static void *get_free_block_prev(void *ptr);
 static void *get_free_block_next(void *ptr);

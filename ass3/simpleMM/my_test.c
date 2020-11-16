@@ -3,30 +3,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int main() {
-    /*
-    int *a = (int *)malloc(sizeof(int));
-    *a = 1;
+int main(){
+    void *pointer = NULL;
+    char *string = "test";
+    pointer = &string; // point to the address of string
+    printf("The string address: %p\n", string);
+    printf("The string: %s\n", string);
+    printf("The pointer address: %p\n", pointer);
+    printf("The pointer points to: %p\n", (char*)(*(char**)(pointer)));
 
-    printf("ptr: %p\n", a);
-    printf("size ptr: %ld\n", sizeof(a));
-    printf("size int: %ld\n", sizeof(*a));
-    printf("ptr: %p\n", a + 1);
-    */
-
-    void *a = NULL;
-    printf("ptr: %p\n", a);
-    test(a);
-    printf("ptr: %p\n", a);
-
-}
-
-void test(void *a) {
-    a = (int *)sbrk(sizeof(int));
-    *((int *)a) = 0;
-    printf("ptr test: %p\n", a);
-    printf("ptr test: %p\n", &a);
-
-    printf("a test: %d\n", *((int *)a));
-
+    return 0;
 }

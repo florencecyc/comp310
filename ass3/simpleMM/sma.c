@@ -1,20 +1,15 @@
 #include "sma.h"
 
 #define MAX_TOP_FREE (128 * 1024)  // Max top free block size = 128 Kbytes
-#define BLOCK_HEADER_SIZE sizeof(State) + sizeof(int)  // state + length
-#define FREE_BLOCK_EXTRA_HEADER_SIZE 2 * sizeof(void *)  // prev + next
+#define BLOCK_HEADER_SIZE 2 * sizeof(int)  // state(0 for free, 1 for allocated) + length
+#define FREE_BLOCK_EXTRA_HEADER_SIZE 2 * sizeof(char *)  // prev + next
 
 #define max(X,Y) ((X) > (Y) ? (X) : (Y))
 
-typedef enum {
+typedef enum __Policy {
 	WORST,
 	NEXT
 } Policy;
-
-typedef enum {
-    FREE, 
-    ALLOCATED
-} State;
 
 char *sma_malloc_error;
 void *freeListHead = NULL;			  //	The pointer to the HEAD of the doubly linked free memory list
@@ -28,200 +23,155 @@ void *sma_malloc(int size) {
 
     if (freeListHead == NULL) {
         // Allocate memory by increasing the Program Break
-        ptrMemory = allocate_pBrk(size);
+        ptrMemory = allocate_from_sbrk(size);
     } else {
         // Allocate memory from the free memory list
-        ptrMemory = allocate_freeList(size);
-        if (ptrMemory == (void *)-2) {
-            ptrMemory = allocate_pBrk(size);
+        ptrMemory = allocate_from_freeList(size);
+        if (ptrMemory == NULL) {
+            ptrMemory = allocate_from_sbrk(size);
         }
     }
     // Validates memory allocation
-    if (ptrMemory < 0 || ptrMemory == NULL) {
+    if (ptrMemory == NULL || ptrMemory < 0) {
         sma_malloc_error = "Error: Memory allocation failed!";
         return NULL;
     }
     // Updates SMA Info
     totalAllocatedSize += size;
+
     return ptrMemory;
 }
 
-void *allocate_pBrk(int size) {
+void *allocate_from_sbrk(int size) {
     void *newBlock = NULL;
+    void *freeBlock = NULL;
     int excessSize = MAX_TOP_FREE;
 
-	//	Allocate memory by incrementing the Program Break by calling sbrk() or brk()
-	newBlock = allocate_block(size, excessSize, 0);
-	return newBlock;
-}
-
-void *allocate_block(int size, int excessSize, int fromFreeList) {
-    void *newBlock = NULL;
-	void *excessFreeBlock = NULL;  // pointer for any excess free block
-	int addFreeBlock;
-
-    void *sbrkHead = sbrk(BLOCK_HEADER_SIZE + size + excessSize);
+    void *sbrkHead = sbrk(BLOCK_HEADER_SIZE * 2 + size + excessSize);
 
     newBlock = sbrkHead + BLOCK_HEADER_SIZE;
-    int *newBlockSize = (int *)get_block_size(newBlock);
-    *newBlockSize = size;
-    State *newBlockState = (State *)get_block_state(newBlock);
-    *newBlockState = ALLOCATED;
+    set_new_block_config(newBlock, size);
 
-	// Checks if excess free size is big enough to be added to the free memory list
-	// Helps to reduce external fragmentation
-	addFreeBlock = excessSize > BLOCK_HEADER_SIZE + FREE_BLOCK_EXTRA_HEADER_SIZE;
-    
-	//	If excess free size is big enough
-	if (addFreeBlock)
-	{
-		// Create a free block using the excess memory size, then assign it to the Excess Free Block
-        excessFreeBlock = sbrkHead + BLOCK_HEADER_SIZE + size + BLOCK_HEADER_SIZE;
-        int *excessFreeBlockSize = (int *)get_block_size(excessFreeBlock);
-        *excessFreeBlockSize = excessSize - BLOCK_HEADER_SIZE;
+    freeBlock = sbrkHead + BLOCK_HEADER_SIZE * 2 + size;
+    set_free_block_config(freeBlock, excessSize, freeListTail, NULL);
 
-		//	Checks if the new block was allocated from the free memory list
-		if (fromFreeList)
-		{
-			//	Removes new block and adds the excess free block to the free list
-			replace_block_freeList(newBlock, excessFreeBlock);
-		}
-		else
-		{
-			//	Adds excess free block to the free list
-			add_block_freeList(excessFreeBlock);
-		}
-	}
-	//	Otherwise add the excess memory to the new block
-	else
-	{
-		//	TODO: Add excessSize to size and assign it to the new Block
-
-		//	Checks if the new block was allocated from the free memory list
-		if (fromFreeList)
-		{
-			//	Removes the new block from the free list
-			remove_block_freeList(newBlock);
-		}
-	}
-    
     return newBlock;
 }
 
-void sma_free(void *ptr) {
-    if (ptr == NULL) {
-        puts("Error: Attempting to free NULL!");
-    }
-    else if (ptr > sbrk(0)) {
-        puts("Error: Attempting to free unallocated space!");
-    }
-    else {
-        // Adds the block to the free memory list
-		add_block_freeList(ptr);
-    }
-}
-
-void add_block_freeList(void *block) {
-   if (freeListHead == NULL) {
-       freeListHead = block;
-   }
-   
-}
-
-void *allocate_freeList(int size) {
-	void *ptrMemory = NULL;
+void *allocate_from_freeList(int size) {
+	void *newBlock = NULL;
 
     if (currentPolicy == WORST) {
-		ptrMemory = allocate_worst_fit(size);
+		newBlock = allocate_worst_fit(size);
     }
     else if (currentPolicy == NEXT) {
-        ptrMemory = allocate_next_fit(size);
+        newBlock = allocate_next_fit(size);
     }
     else {
-        ptrMemory = NULL;
+        newBlock = NULL;
     }
-    return ptrMemory;
+
+    return newBlock;
 }
 
 void *allocate_worst_fit(int size) {
-	int largestFreeBlock = get_largest_freeBlock();
-	
+    void *largestFreeBlock = get_largest_free_block();
+
+    void *newBlock = NULL;
+    newBlock = replace_free_block(largestFreeBlock, size);
+
+    return newBlock;
 }
 
 void *allocate_next_fit(int size) {
-
+    
 }
 
-void sma_mallopt(int policy) {
-    if (policy == 1) {
-        currentPolicy = WORST;
+void *replace_free_block(void *freeBlock, int newBlockSize) {
+    int freeBlockSize = *(int *)get_block_size(freeBlock);
+
+    if (freeBlockSize < newBlockSize) {
+        return NULL;
     }
-    else if (policy == 2) {
-        currentPolicy = NEXT;
+
+    void *newBlock = freeBlock;
+    set_new_block_config(newBlock, newBlockSize);
+    
+    if (freeListHead == freeBlock) {
+        freeBlock = freeBlock + newBlockSize + BLOCK_HEADER_SIZE;
+        freeListHead = freeBlock;
+    }
+    freeBlockSize = freeBlockSize - newBlockSize - BLOCK_HEADER_SIZE;
+    void *prev = (char *)newBlock;
+    void *next = (char *)prev++;
+    set_free_block_config(freeBlock, freeBlockSize, prev, next);
+
+    return newBlock;
+}
+
+
+void set_new_block_config(void *block, int size) {
+    *(int *)(block - sizeof(int *)) = size;
+    *(int *)(block - 2 * sizeof(int *)) = 1;
+}
+
+void set_free_block_config(void *block, int size, void *prev, void *next) {
+    char str[100];
+
+    *(int *)(block - sizeof(int)) = size;
+    *(int *)(block - 2 * sizeof(int)) = 0;
+
+    if (freeListHead == NULL) {
+        freeListHead = block;
+    }
+    else if (freeListTail == NULL) {
+        *(char **)(freeListHead) = (char *)prev;
+        *(char **)(freeListHead + sizeof(char *)) = (char *)next;
+    }
+    else {
+        
     }
 }
 
-void sma_mallinfo() {
-	int largestFreeBlock = get_largest_freeBlock();
-    char str[60];
+void *get_largest_free_block() {
+    if (freeListHead == NULL) {
+        return NULL;
+    } else {
+        void *cursorBlock = freeListHead;
+        int cursorBlockSize;
+        int largestFreeBlockSize = *(int *)get_block_size(cursorBlock);
+        void *largestFreeBlock = cursorBlock;
 
-    //	Prints the SMA Stats
-	sprintf(str, "Total number of bytes allocated: %lu", totalAllocatedSize);
-	puts(str);
-	sprintf(str, "Total free space: %lu", totalFreeSize);
-	puts(str);
-	sprintf(str, "Size of largest contigious free space (in bytes): %d", largestFreeBlock);
-	puts(str);
-}
+        while ((cursorBlock = get_free_block_next(cursorBlock)) != NULL) {
+            if ((cursorBlockSize = *(int *)get_block_size(cursorBlock)) > largestFreeBlockSize) {
+                largestFreeBlockSize = cursorBlockSize;
+                largestFreeBlock = cursorBlock;
+            }
+        }
 
-void *sma_realloc(void *ptr, int size) {
-
+        return largestFreeBlock;
+    }
 }
 
 void *get_block_size(void *ptr) {
     int *ptrSize;
 
-    ptrSize = (int *)ptr - sizeof(int);
+    ptrSize = (int *)ptr;
+    ptrSize--;
     return (int *)ptrSize;
 }
 
 void *get_free_block_prev(void *ptr) {
-    void *ptrPrev;
+    char *ptrPrev;
 
-    ptrPrev = ptr;
-    return (void *)ptrPrev;
+    ptrPrev = (char *)ptr;
+    return (char *)ptrPrev;
 }
 
 void *get_free_block_next(void *ptr) {
-    void *ptrNext;
+    char *ptrNext;
 
-    ptrNext = ptr + sizeof(void *);
-    return (void *)ptrNext;
-}
-
-void *get_block_state(void *ptr) {
-    void *ptrState;
-
-    ptrState = ptr - sizeof(int) - sizeof(State);
-    return (void *)ptrState;
-}
-
-int get_largest_freeBlock() {
-	int largestBlockSize = 0;
-    char str[300];
-
-	// TODO: Iterate through the Free Block List to find the largest free block and return its size
-    void *freeListCursor = freeListHead;
-    void *freeListNext = NULL;
-    int tmpSize;
-    while ((freeListNext = get_free_block_next(freeListCursor)) != freeListTail) {
-        tmpSize = *(int *)get_block_size(freeListCursor);
-        sprintf(str, "cursor %p, next %p, tail %p", freeListCursor, freeListNext, freeListTail);
-        puts(str);
-        largestBlockSize = max(tmpSize, largestBlockSize);
-        break;
-    }
-    largestBlockSize = *(int *)get_block_size(freeListCursor);
-
-	return largestBlockSize;
+    ptrNext = (char *)ptr;
+    ptrNext++;
+    return (char *)ptrNext;
 }
