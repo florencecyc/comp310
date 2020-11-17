@@ -9,3 +9,4 @@
    * `add_block_freeList`
 2. implement `sma_free`
    * `add_block_freeList`
+3. merge when adding free boock

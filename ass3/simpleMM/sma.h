@@ -24,7 +24,8 @@ static void set_free_block_config(void *block, int size, void *prev, void *next)
 static void *allocate_worst_fit(int size);
 static void *allocate_next_fit(int size);
 static void *get_largest_free_block();
-static void *replace_free_block(void *freeBlock, int newBlockSize);
+static void *replace_block_freeList(void *freeBlock, int newBlockSize);
+static void add_block_freeList(void* block);
 
 static void *get_block_size(void *ptr);
 static void *get_free_block_prev(void *ptr);

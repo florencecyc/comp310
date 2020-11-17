@@ -28,7 +28,7 @@
 
 int main(int argc, char *argv[])
 {
-	int i, diff = 0, count = 0;
+	int i, count = 0;
 	void *ptr, *limitafter = NULL, *limitbefore = NULL;
 	char *c[32], *ct;
 	char str[60];
@@ -40,13 +40,9 @@ int main(int argc, char *argv[])
 	for (i = 0; i < 32; i++)
 	{
 		c[i] = (char *)sma_malloc(1024);
-        if (i > 0) {
-            diff = c[i] - c[i-1];
-        }
-		sprintf(str, "c[%d]: %llu diff: %llu", i, c[i], diff);
-		puts(str);
+		// sprintf(str, "c[i]: %p", c[i]);
+		// puts(str);
 	}
-    return (0);
 
 	// Now deallocating some of the slots ..to free
 	for (i = 10; i < 18; i++)
@@ -86,6 +82,8 @@ int main(int argc, char *argv[])
 		puts("\t\t\t\t PASSED\n");
 	else
 		puts("\t\t\t\t FAILED\n");
+
+	return (0);
 
 	// Test 3: Worst Fit Test
 	puts("Test 3: Check for Worst Fit algorithm...");

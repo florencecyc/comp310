@@ -42,7 +42,52 @@ void *sma_malloc(int size) {
     return ptrMemory;
 }
 
+void sma_free(void* ptr) {
+    char str[100];
+
+    if (ptr == NULL) {
+		puts("Error: Attempting to free NULL!");
+	}
+	// Checks if the ptr is beyond Program Break
+	else if (ptr > sbrk(0)) {
+		puts("Error: Attempting to free unallocated space!");
+	}
+	else {
+		//	Adds the block to the free memory list
+		add_block_freeList(ptr);
+        sprintf(str, "freeListHead after freeing: %p", freeListHead);
+        puts(str);
+        sprintf(str, "freeListTail after freeing: %p", freeListTail);
+        puts(str);
+	}
+}
+
+void add_block_freeList(void* block) {
+    int blockSize = *(int *)get_block_size(block);
+
+    if (freeListHead == NULL) {
+        freeListHead = block;
+    } else if (freeListTail == NULL) {
+        // todo: check if you can merge
+        freeListTail = block;
+        *(char **)(freeListHead + sizeof(char *)) = freeListTail;
+    } else {
+        // todo: check if you can merge
+
+        *(char **)(freeListTail + sizeof(char *)) = (char *)block;
+        *(char **)block = freeListTail;
+        freeListTail = block;
+    }
+
+	totalAllocatedSize -= blockSize;
+	totalFreeSize += blockSize;
+}
+
 void *allocate_from_sbrk(int size) {
+    char str[60];
+    sprintf(str, "allocate_from_sbrk: %d", size);
+    puts(str);
+
     void *newBlock = NULL;
     void *freeBlock = NULL;
     int excessSize = MAX_TOP_FREE;
@@ -55,10 +100,16 @@ void *allocate_from_sbrk(int size) {
     freeBlock = sbrkHead + BLOCK_HEADER_SIZE * 2 + size;
     set_free_block_config(freeBlock, excessSize, freeListTail, NULL);
 
+    totalAllocatedSize += size;
+    totalFreeSize += excessSize;
     return newBlock;
 }
 
 void *allocate_from_freeList(int size) {
+    char str[60];
+    sprintf(str, "allocate_from_freeList: %d", size);
+    puts(str);
+
 	void *newBlock = NULL;
 
     if (currentPolicy == WORST) {
@@ -78,7 +129,7 @@ void *allocate_worst_fit(int size) {
     void *largestFreeBlock = get_largest_free_block();
 
     void *newBlock = NULL;
-    newBlock = replace_free_block(largestFreeBlock, size);
+    newBlock = replace_block_freeList(largestFreeBlock, size);
 
     return newBlock;
 }
@@ -87,7 +138,7 @@ void *allocate_next_fit(int size) {
     
 }
 
-void *replace_free_block(void *freeBlock, int newBlockSize) {
+void *replace_block_freeList(void *freeBlock, int newBlockSize) {
     int freeBlockSize = *(int *)get_block_size(freeBlock);
 
     if (freeBlockSize < newBlockSize) {
@@ -97,18 +148,48 @@ void *replace_free_block(void *freeBlock, int newBlockSize) {
     void *newBlock = freeBlock;
     set_new_block_config(newBlock, newBlockSize);
     
-    if (freeListHead == freeBlock) {
-        freeBlock = freeBlock + newBlockSize + BLOCK_HEADER_SIZE;
-        freeListHead = freeBlock;
-    }
-    freeBlockSize = freeBlockSize - newBlockSize - BLOCK_HEADER_SIZE;
     void *prev = (char *)newBlock;
     void *next = (char *)prev++;
-    set_free_block_config(freeBlock, freeBlockSize, prev, next);
+    freeBlockSize = freeBlockSize - newBlockSize - BLOCK_HEADER_SIZE;
+
+    if (freeListHead == freeBlock) {
+        if (freeBlockSize < BLOCK_HEADER_SIZE + FREE_BLOCK_EXTRA_HEADER_SIZE) {
+            freeListHead = get_free_block_next(freeListHead);
+            *(char **)freeListHead = NULL;
+        } else {
+            freeBlock = freeBlock + newBlockSize + BLOCK_HEADER_SIZE;
+            freeListHead = freeBlock;
+            set_free_block_config(freeBlock, freeBlockSize, prev, next);
+        }
+    }
+    else if (freeListTail == freeBlock) {
+        if (freeBlockSize < BLOCK_HEADER_SIZE + FREE_BLOCK_EXTRA_HEADER_SIZE) {
+            freeListTail = get_free_block_prev(freeListTail);
+            *(char **)(freeListTail + sizeof(char *)) = NULL;
+        } else {
+            freeBlock = freeBlock + newBlockSize + BLOCK_HEADER_SIZE;
+            freeListTail = freeBlock;
+            set_free_block_config(freeBlock, freeBlockSize, prev, next);
+        }
+    }
+    else {
+        if (freeBlockSize >= BLOCK_HEADER_SIZE + FREE_BLOCK_EXTRA_HEADER_SIZE) {
+            freeBlock = freeBlock + newBlockSize + BLOCK_HEADER_SIZE;
+            set_free_block_config(freeBlock, freeBlockSize, prev, next);
+        }
+    }
+
+    char str[60];
+    sprintf(str, "freeListHead after replacing: %p", freeListHead);
+    puts(str);
+    sprintf(str, "freeListTail after replacing: %p", freeListTail);
+    puts(str);
+
+    totalAllocatedSize += newBlockSize;
+    totalFreeSize -= newBlockSize;
 
     return newBlock;
 }
-
 
 void set_new_block_config(void *block, int size) {
     *(int *)(block - sizeof(int *)) = size;
