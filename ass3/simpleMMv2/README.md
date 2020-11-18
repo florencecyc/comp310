@@ -1,3 +1,4 @@
 ### simpleMM v2
 * add footer for merging
-* support worst & next fit
+* support worst fit
+* Test 1,2,3 Passed

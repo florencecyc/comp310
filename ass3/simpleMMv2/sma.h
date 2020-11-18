@@ -34,3 +34,4 @@ static void set_block_header_footer(void *block, int size, int tag);
 static void set_free_block_next(void *block, void *next);
 static void set_free_block_prev(void *block, void *prev);
 static void merge_two_blocks(void *formerPtr, void *latterPtr);
+static void debug();

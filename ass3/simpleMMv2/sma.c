@@ -24,55 +24,8 @@ void *sma_malloc(int size) {
     sprintf(str, "\tsma_malloc");
     puts(str);
 
-    void *cursor = freeListHead;
-    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }
-    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }
-    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }
-    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }
-    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }
-    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }
-    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }
-    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }
+    debug();
+
     void *ptrMemory = NULL;
 
     if (freeListHead == NULL) {
@@ -101,55 +54,7 @@ void sma_free(void *ptr) {
     sprintf(str, "\tsma_free");
     puts(str);
 
-    void *cursor = freeListHead;
-    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }
-    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }
-    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }
-    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }
-    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }
-    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }
-    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }
-    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }    if (cursor != NULL) {
-        sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
-        puts(str);
-        cursor = get_free_block_next(cursor);
-    }
+    debug();
 
     if (ptr == NULL) {
 		puts("Error: Attempting to free NULL!");
@@ -183,15 +88,40 @@ void *allocate_from_sbrk(int size) {
 
     void *newBlock = NULL;
     void *freeBlock = NULL;
+
+    int tailSize = 0;
+    if (freeListHead != NULL) {
+        tailSize = freeListTail ? get_block_size(freeListTail) : get_block_size(freeListHead);
+    }
     int excessSize = MAX_TOP_FREE;
+    if (tailSize > 0) {
+        excessSize += (size - tailSize);
+    }
 
     void *sbrkHead = sbrk(2 * BLOCK_HEADER_SIZE + 2 * BLOCK_FOOTER_SIZE + size + excessSize);
 
-    newBlock = sbrkHead + BLOCK_HEADER_SIZE;
+    if (tailSize > 0) {
+        if (freeListTail == NULL) {
+            newBlock = freeListHead;
+            freeListHead = NULL;
+        } else {
+            newBlock = freeListTail;
+            void *tailPrev = get_free_block_prev(freeListTail);
+            if (tailPrev == freeListHead) {
+                freeListTail = NULL;
+            } else {
+                freeListTail = tailPrev;
+            }
+        }
+    }
+    else {
+        newBlock = sbrkHead + BLOCK_HEADER_SIZE;
+    }
+
     set_block_header_footer(newBlock, size, NOT_FREE);
 
     freeBlock = newBlock + size + BLOCK_HEADER_SIZE + BLOCK_FOOTER_SIZE;
-    set_block_header_footer(freeBlock, excessSize, FREE);
+    set_block_header_footer(freeBlock, MAX_TOP_FREE, FREE);
     append_block_freeList(freeBlock);
 
     return newBlock;
@@ -261,13 +191,9 @@ void *allocate_block_from_freeList(void *freeBlock, int newBlockSize) {
         set_free_block_next(newFreeBlock, freeNext);
 
         if (freePrev != NULL) {
-            sprintf(str, "\freePrev size %d", get_block_size(freePrev));
-            puts(str);
             set_free_block_next(freePrev, newFreeBlock);
         }
         if (freeNext != NULL) {
-            sprintf(str, "\freeNext size %d", get_block_size(freeNext));
-            puts(str);
             set_free_block_prev(freeNext, newFreeBlock);
         }
 
@@ -320,7 +246,7 @@ void *get_largest_free_block() {
 }
 
 void replace_block_freeList(void *ptr) {  // change ptr from allocated to freed
-    char str[60];
+    char str[120];
     sprintf(str, "replace_block_freeList ptr %p", ptr);
     puts(str);
 
@@ -341,6 +267,7 @@ void replace_block_freeList(void *ptr) {  // change ptr from allocated to freed
                 set_free_block_prev(ptr, NULL);
                 set_free_block_next(ptr, freeListHead);
                 set_free_block_prev(freeListHead, ptr);
+                freeListTail = freeListHead;
                 freeListHead = ptr;
             }
         }
@@ -362,12 +289,22 @@ void replace_block_freeList(void *ptr) {  // change ptr from allocated to freed
                     void *freeCursorNext = get_free_block_next(freeCursor);
                     while (freeCursor != NULL && freeCursorNext != NULL) {
                         if (freeCursor < ptr && ptr < freeCursorNext) {
-                            set_block_header_footer(ptr, ptrSize, FREE);
+                            int nextBlockTag = *(int *)(ptr + ptrSize + BLOCK_FOOTER_SIZE);
 
-                            set_free_block_prev(freeCursorNext, ptr);
-                            set_free_block_prev(ptr, freeCursor);
-                            set_free_block_next(freeCursor, ptr);
-                            set_free_block_next(ptr, freeCursorNext);
+                            if (nextBlockTag == FREE) {
+                                merge_two_blocks(ptr, freeCursorNext);
+                            }
+                            if (prevBlockTag == FREE) {
+                                merge_two_blocks(freeCursor, ptr);
+                            } 
+                            if (nextBlockTag == NOT_FREE && prevBlockTag == NOT_FREE) {
+                                set_block_header_footer(ptr, ptrSize, FREE);
+
+                                set_free_block_prev(freeCursorNext, ptr);
+                                set_free_block_prev(ptr, freeCursor);
+                                set_free_block_next(freeCursor, ptr);
+                                set_free_block_next(ptr, freeCursorNext);
+                            }
                             break;
                         }
                         freeCursor = freeCursorNext;
@@ -411,15 +348,30 @@ void append_block_freeList(void *ptr) {
 }
 
 void merge_two_blocks(void *formerPtr, void *latterPtr) {
-    void *latterNext = get_free_block_next(latterPtr);
-
     int formerSize = get_block_size(formerPtr);
     int latterSize = get_block_size(latterPtr);
+    int latterTag = *(int *)(latterPtr - BLOCK_HEADER_SIZE);
+
     int mergeSize = formerSize + BLOCK_FOOTER_SIZE + BLOCK_HEADER_SIZE + latterSize;
 
     set_block_header_footer(formerPtr, mergeSize, FREE);
-    set_free_block_prev(formerPtr, latterNext);
 
+    if (latterTag == FREE) {
+        void *latterPrev = get_free_block_prev(latterPtr);
+        void *latterNext = get_free_block_next(latterPtr);
+
+        if (latterPrev != NULL) {
+            set_free_block_next(latterPrev, formerPtr);
+        }
+        set_free_block_next(formerPtr, latterNext);
+
+        if (latterNext != NULL) {
+            set_free_block_prev(latterNext, formerPtr);
+        }
+        set_free_block_prev(formerPtr, latterPrev);
+        
+    }
+    
     if (latterPtr == freeListHead) {
         freeListHead = formerPtr;
     }
@@ -466,4 +418,21 @@ void *get_free_block_next(void *ptr) {
     ptrNext++;
 
     return *(char **)ptrNext;
+}
+
+void debug() {
+    char str[120];
+
+    void *cursor = freeListHead;
+    while (cursor != NULL) {
+        if (cursor == freeListHead) {
+            sprintf(str, "\tcursor %p size %d >>> freeListHead", cursor, get_block_size(cursor));
+        } else if (cursor == freeListTail) {
+            sprintf(str, "\tcursor %p size %d >>> freeListTail", cursor, get_block_size(cursor));
+        } else {
+            sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
+        }
+        puts(str);
+        cursor = get_free_block_next(cursor);
+    }
 }
