@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include "sma.h"
 
 #define MAX_TOP_FREE (128 * 1024)  // Max top free block size = 128 Kbytes
@@ -20,9 +21,9 @@ unsigned long totalAllocatedSize = 0; //	Total Allocated memory in Bytes
 unsigned long totalFreeSize = 0;	  //	Total Free memory in Bytes in the free memory list
 Policy currentPolicy = WORST;		  //	Current Policy
 
-void *sma_malloc(int size) {
-    char str[100];
+bool IS_DEBUG_MODE = false;
 
+void *sma_malloc(int size) {
     void *ptrMemory = NULL;
 
     if (freeListHead == NULL) {
@@ -40,23 +41,22 @@ void *sma_malloc(int size) {
         sma_malloc_error = "Error: Memory allocation failed!";
         return NULL;
     }
-    // Updates SMA Info
-    totalAllocatedSize += size;
 
     if (currentPolicy == NEXT) {
         lastAllocatedPtr = ptrMemory;
     }
-    /*
-    sprintf(str, "\tsma_malloc");
-    puts(str);
-    debug();
-    */
+    
+    if (IS_DEBUG_MODE) {
+        char str[100];
+        sprintf(str, "\tsma_malloc");
+        puts(str);
+        debug();
+    }
+
     return ptrMemory;
 }
 
 void sma_free(void *ptr) {
-    char str[100];
-
     if (ptr == NULL) {
 		puts("Error: Attempting to free NULL!");
 	}
@@ -67,11 +67,47 @@ void sma_free(void *ptr) {
     else {
 		replace_block_freeList(ptr);
     }
-    /*
-    sprintf(str, "\tsma_free");
-    puts(str);
-    debug();
-    */
+
+    if (IS_DEBUG_MODE) {
+        char str[100];
+        sprintf(str, "\tsma_free");
+        puts(str);
+        debug();
+    }
+}
+
+void *sma_realloc(void *ptr, int newSize) {
+    if (ptr == NULL || newSize <= 0) {
+        return NULL;
+    }
+
+    if (IS_DEBUG_MODE) {
+        char str[60];
+        sprintf(str, "sma_realloc %p", ptr);
+        puts(str);
+        debug();
+    }
+
+    int ptrSize = get_block_size(ptr);
+
+    if (newSize == ptrSize) {
+        return ptr;
+    }
+    else if (newSize < ptrSize) {
+        set_block_header_footer(ptr, newSize, NOT_FREE);
+        int freeBlockSize = ptrSize - newSize - BLOCK_HEADER_SIZE - BLOCK_FOOTER_SIZE;
+        if (freeBlockSize > 0) {
+            void *fakeAllocatedBlock = ptr + newSize + BLOCK_FOOTER_SIZE + BLOCK_HEADER_SIZE;
+            set_block_header_footer(fakeAllocatedBlock, freeBlockSize, NOT_FREE);
+            replace_block_freeList(fakeAllocatedBlock);
+        }
+        return ptr;
+    }
+    else {
+        replace_block_freeList(ptr);
+        void *newPtr = sma_malloc(newSize);
+        return newPtr;
+    }
 }
 
 void sma_mallopt(int policy)
@@ -85,6 +121,22 @@ void sma_mallopt(int policy)
 	{
 		currentPolicy = NEXT;
 	}
+}
+
+void sma_mallinfo()
+{
+	//	Finds the largest Contiguous Free Space (should be the largest free block)
+	void *largestFreeBlock = get_largest_free_block();
+    int largestFreeBlockSize = get_block_size(largestFreeBlock);
+	char str[60];
+
+	//	Prints the SMA Stats
+	sprintf(str, "Total number of bytes allocated: %lu", totalAllocatedSize);
+	puts(str);
+	sprintf(str, "Total free space: %lu", totalFreeSize);
+	puts(str);
+	sprintf(str, "Size of largest contigious free space (in bytes): %d", largestFreeBlockSize);
+	puts(str);
 }
 
 void *allocate_from_sbrk(int size) {
@@ -132,16 +184,15 @@ void *allocate_from_sbrk(int size) {
     set_block_header_footer(freeBlock, MAX_TOP_FREE, FREE);
     append_block_freeList(freeBlock);
 
+    if (newBlock != NULL) {
+        totalAllocatedSize += size;
+        totalFreeSize += excessSize;
+    }
+
     return newBlock;
 }
 
 void *allocate_from_freeList(int size) {
-    char str[60];
-    /*
-    sprintf(str, "\tallocate_from_freeList: %d", size);
-    puts(str);
-    */
-
 	void *newBlock = NULL;
 
     if (currentPolicy == WORST) {
@@ -149,9 +200,6 @@ void *allocate_from_freeList(int size) {
     }
     else if (currentPolicy == NEXT) {
         newBlock = allocate_next_fit(size);
-    }
-    else {
-        newBlock = NULL;
     }
 
     return newBlock;
@@ -181,13 +229,7 @@ void *allocate_next_fit(int size) {
 
 void *allocate_block_from_freeList(void *freeBlock, int newBlockSize) {
     int freeBlockSize = get_block_size(freeBlock);
-    
-    char str[60];
-    /*
-    sprintf(str, "%d ? %d", newBlockSize, freeBlockSize);
-    puts(str);
-    */
-    
+
     if (freeBlockSize < newBlockSize) {
         return NULL;
     }
@@ -201,17 +243,13 @@ void *allocate_block_from_freeList(void *freeBlock, int newBlockSize) {
 
     int newFreeBlockSize = freeBlockSize - newBlockSize - BLOCK_FOOTER_SIZE - BLOCK_HEADER_SIZE;
 
-    if (newFreeBlockSize > 0) {
+    if (newFreeBlockSize >= 2 * sizeof(char *)) {
         void *newFreeBlock = freeBlock + newBlockSize + BLOCK_FOOTER_SIZE + BLOCK_HEADER_SIZE;
         set_free_block_prev(newFreeBlock, freePrev);
         set_free_block_next(newFreeBlock, freeNext);
 
-        if (freePrev != NULL) {
-            set_free_block_next(freePrev, newFreeBlock);
-        }
-        if (freeNext != NULL) {
-            set_free_block_prev(freeNext, newFreeBlock);
-        }
+        set_free_block_next(freePrev, newFreeBlock);
+        set_free_block_prev(freeNext, newFreeBlock);
 
         if (freeListHead == freeBlock) {
             freeListHead = newFreeBlock;
@@ -232,6 +270,14 @@ void *allocate_block_from_freeList(void *freeBlock, int newBlockSize) {
         else {
             set_free_block_prev(freeNext, freePrev);
             set_free_block_next(freePrev, freeNext);
+        }
+    }
+
+    if (newBlock != NULL) {
+        totalAllocatedSize += newBlockSize;
+
+        if (newFreeBlockSize >= 2 * sizeof(char *)) {
+            totalFreeSize -= newBlockSize;
         }
     }
 
@@ -293,7 +339,8 @@ void *get_next_fit_block(int newBlockSize) {
     return nextFreeBlock;
 }
 
-void replace_block_freeList(void *ptr) {  // change ptr from allocated to freed
+// Replace allocated ptr to free ptr
+void replace_block_freeList(void *ptr) {
     char str[120];
     /*
     sprintf(str, "replace_block_freeList ptr %p", ptr);
@@ -372,6 +419,8 @@ void replace_block_freeList(void *ptr) {  // change ptr from allocated to freed
             }
         }
     }
+    totalAllocatedSize -= ptrSize;
+    totalFreeSize += ptrSize;
 }
 
 void append_block_freeList(void *ptr) {
@@ -397,7 +446,7 @@ void append_block_freeList(void *ptr) {
     }
 }
 
-void merge_two_blocks(void *formerPtr, void *latterPtr) {
+void merge_two_blocks(void *formerPtr, void *latterPtr) {    
     int formerSize = get_block_size(formerPtr);
     int latterSize = get_block_size(latterPtr);
     int latterTag = *(int *)(latterPtr - BLOCK_HEADER_SIZE);
@@ -429,9 +478,23 @@ void merge_two_blocks(void *formerPtr, void *latterPtr) {
         freeListTail = formerPtr;
     }
 
+    totalFreeSize += (BLOCK_FOOTER_SIZE + BLOCK_HEADER_SIZE);
+
     if (mergeSize > MAX_TOP_FREE) {
         set_block_header_footer(formerPtr, MAX_TOP_FREE, FREE);
-        brk(sbrk(0) - (mergeSize - MAX_TOP_FREE));
+        int brkState = brk(sbrk(0) - (mergeSize - MAX_TOP_FREE));
+
+        if (IS_DEBUG_MODE) {
+            char str[60];
+            if (brkState == 0) {
+                sprintf(str, "\tbrk() SUCCESS, ret val %d", brkState);
+            } else {
+                sprintf(str, "\tbrk() FAILURE, ret val %d", brkState);
+            }
+            puts(str);
+        }
+
+        totalFreeSize -= (mergeSize - MAX_TOP_FREE);
     }
 }
 
@@ -445,19 +508,22 @@ void set_block_header_footer(void *block, int size, int tag) {
 }
 
 void set_free_block_prev(void *block, void *prev) {
-    *(char **)block = (char *)prev;
+    if (block != NULL) {
+        *(char **)block = (char *)prev;
+    }
 }
 
 void set_free_block_next(void *block, void *next) {
-    *(char **)(block + sizeof(char *)) = (char *)next;
+    if (block != NULL) {
+        *(char **)(block + sizeof(char *)) = (char *)next;
+    }
 }
 
 int get_block_size(void *ptr) {
-    int *ptrSize = (int *)ptr;
-    
-    if (ptrSize == NULL)
+    if (ptr == NULL) {
         return -1;
-
+    }
+    int *ptrSize = (int *)ptr;
     ptrSize--;
     return *(int *)ptrSize;
 }
@@ -495,8 +561,5 @@ void debug() {
     }
 
     sprintf(str, "\n\t%p >>> lastAllocatedPtr", lastAllocatedPtr);
-    puts(str);
-
-    sprintf(str, "------- FreeListDebug Finished -------\n");
     puts(str);
 }

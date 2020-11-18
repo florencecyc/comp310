@@ -182,19 +182,18 @@ int main(int argc, char *argv[])
 	sprintf(str, "C[19]: %p, CP4: %p", c[19], cp4);
 	puts(str);
 	*/
-	return (0);
 
 	// Test 5: Realloc test (with Next Fit)
 	puts("Test 5: Check for Reallocation with Next Fit...");
-	*cp3 = 'ECSE_427';
-	*cp4 = 'COMP_310';
+	*cp3 = "ECSE_427";
+	*cp4 = "COMP_310";
 	cp3 = (char *)sma_realloc(cp3, 16 * 1024 * 5);
 	cp4 = (char *)sma_realloc(cp4, 16 * 1024 * 3);
 
 	if (cp3 == c[27] && cp3 != NULL && cp4 == c[8] && cp4 != NULL)
 	{
 		//	Tests the Data stored by the memory blocks
-		if(*cp3 == 'ECSE_427' && *cp4 == 'COMP_310'){
+		if(*cp3 == "ECSE_427" && *cp4 == "COMP_310"){
 			puts("\t\t\t\t PASSED\n");
 		}
 		else
@@ -206,6 +205,11 @@ int main(int argc, char *argv[])
 	{
 		puts("\t\t\t\t FAILED\n");
 	}
+
+	sprintf(str, "cp3 %p  c[27] %p", cp3, c[27]);
+	puts(str);
+	sprintf(str, "cp4 %p  c[8] %p", cp4, c[8]);
+	puts(str);
 
 	//	Test 6: Print Stats
 	puts("Test 6: Print SMA Statistics...");
