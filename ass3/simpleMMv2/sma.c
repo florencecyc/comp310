@@ -15,16 +15,13 @@ typedef enum __Policy {
 char *sma_malloc_error;
 void *freeListHead = NULL;			  //	The pointer to the HEAD of the doubly linked free memory list
 void *freeListTail = NULL;			  //	The pointer to the TAIL of the doubly linked free memory list
+void *lastAllocatedPtr = NULL;        //    The pointer to the last allocated block
 unsigned long totalAllocatedSize = 0; //	Total Allocated memory in Bytes
 unsigned long totalFreeSize = 0;	  //	Total Free memory in Bytes in the free memory list
 Policy currentPolicy = WORST;		  //	Current Policy
 
 void *sma_malloc(int size) {
     char str[100];
-    sprintf(str, "\tsma_malloc");
-    puts(str);
-
-    debug();
 
     void *ptrMemory = NULL;
 
@@ -46,15 +43,19 @@ void *sma_malloc(int size) {
     // Updates SMA Info
     totalAllocatedSize += size;
 
+    if (currentPolicy == NEXT) {
+        lastAllocatedPtr = ptrMemory;
+    }
+    /*
+    sprintf(str, "\tsma_malloc");
+    puts(str);
+    debug();
+    */
     return ptrMemory;
 }
 
 void sma_free(void *ptr) {
     char str[100];
-    sprintf(str, "\tsma_free");
-    puts(str);
-
-    debug();
 
     if (ptr == NULL) {
 		puts("Error: Attempting to free NULL!");
@@ -66,6 +67,11 @@ void sma_free(void *ptr) {
     else {
 		replace_block_freeList(ptr);
     }
+    /*
+    sprintf(str, "\tsma_free");
+    puts(str);
+    debug();
+    */
 }
 
 void sma_mallopt(int policy)
@@ -83,8 +89,10 @@ void sma_mallopt(int policy)
 
 void *allocate_from_sbrk(int size) {
     char str[60];
+    /*
     sprintf(str, "\tallocate_from_sbrk: %d", size);
     puts(str);
+    */
 
     void *newBlock = NULL;
     void *freeBlock = NULL;
@@ -129,8 +137,10 @@ void *allocate_from_sbrk(int size) {
 
 void *allocate_from_freeList(int size) {
     char str[60];
+    /*
     sprintf(str, "\tallocate_from_freeList: %d", size);
     puts(str);
+    */
 
 	void *newBlock = NULL;
 
@@ -159,15 +169,24 @@ void *allocate_worst_fit(int size) {
 }
 
 void *allocate_next_fit(int size) {
-    
+    void *newBlock = NULL;
+    void *nextFreeBlock = get_next_fit_block(size);
+
+    if (nextFreeBlock != NULL) {
+        newBlock = allocate_block_from_freeList(nextFreeBlock, size);
+    }
+
+    return newBlock;
 }
 
 void *allocate_block_from_freeList(void *freeBlock, int newBlockSize) {
     int freeBlockSize = get_block_size(freeBlock);
     
     char str[60];
+    /*
     sprintf(str, "%d ? %d", newBlockSize, freeBlockSize);
     puts(str);
+    */
     
     if (freeBlockSize < newBlockSize) {
         return NULL;
@@ -181,9 +200,6 @@ void *allocate_block_from_freeList(void *freeBlock, int newBlockSize) {
     set_block_header_footer(newBlock, newBlockSize, NOT_FREE);
 
     int newFreeBlockSize = freeBlockSize - newBlockSize - BLOCK_FOOTER_SIZE - BLOCK_HEADER_SIZE;
-
-    sprintf(str, "\tnewFreeBlockSize %d", newFreeBlockSize);
-    puts(str);
 
     if (newFreeBlockSize > 0) {
         void *newFreeBlock = freeBlock + newBlockSize + BLOCK_FOOTER_SIZE + BLOCK_HEADER_SIZE;
@@ -226,29 +242,63 @@ void *get_largest_free_block() {
     if (freeListHead == NULL) {
         return NULL;
     }
-    else {
-        void *cursor = freeListHead;
-        void *largestFreeBlock = cursor;
-        int cursorSize = 0;
-        int largestFreeBlockSize = 0;
+    void *cursor = freeListHead;
+    void *largestFreeBlock = cursor;
+    int cursorSize = 0;
+    int largestFreeBlockSize = 0;
 
-        while (cursor != NULL) {
-            cursorSize = get_block_size(cursor);
-            if (cursorSize > largestFreeBlockSize) {
-                largestFreeBlockSize = cursorSize;
-                largestFreeBlock = cursor;
+    while (cursor != NULL) {
+        cursorSize = get_block_size(cursor);
+        if (cursorSize > largestFreeBlockSize) {
+            largestFreeBlockSize = cursorSize;
+            largestFreeBlock = cursor;
+        }
+        cursor = get_free_block_next(cursor);
+    }
+
+    return largestFreeBlock;
+}
+
+void *get_next_fit_block(int newBlockSize) {
+    if (freeListHead == NULL) {
+        return NULL;
+    }
+    void *cursorPtr = freeListHead;
+    int cursorSize, cursorDistance, smallestDistance = -1;
+    void *nextFreeBlock = NULL;
+
+    while (cursorPtr != NULL) {
+        cursorSize = get_block_size(cursorPtr);
+
+        if (lastAllocatedPtr != NULL) {
+            if (cursorPtr > lastAllocatedPtr && cursorSize >= newBlockSize) {
+                nextFreeBlock = cursorPtr;
+                break;
             }
-            cursor = get_free_block_next(cursor);
+        } else {
+            if (cursorSize >= newBlockSize) {
+                nextFreeBlock = cursorPtr;
+                break;
+            }
         }
 
-        return largestFreeBlock;
+        cursorPtr = get_free_block_next(cursorPtr);
     }
+
+    char str[100];
+    /*
+    sprintf(str, "lastAllocatedPtr %p, nextFreeBlock %p", lastAllocatedPtr, nextFreeBlock);
+    puts(str);
+    */
+    return nextFreeBlock;
 }
 
 void replace_block_freeList(void *ptr) {  // change ptr from allocated to freed
     char str[120];
+    /*
     sprintf(str, "replace_block_freeList ptr %p", ptr);
     puts(str);
+    */
 
     int ptrSize = get_block_size(ptr);
 
@@ -378,6 +428,11 @@ void merge_two_blocks(void *formerPtr, void *latterPtr) {
     else if (latterPtr == freeListTail) {
         freeListTail = formerPtr;
     }
+
+    if (mergeSize > MAX_TOP_FREE) {
+        set_block_header_footer(formerPtr, MAX_TOP_FREE, FREE);
+        brk(sbrk(0) - (mergeSize - MAX_TOP_FREE));
+    }
 }
 
 void set_block_header_footer(void *block, int size, int tag) {
@@ -423,16 +478,25 @@ void *get_free_block_next(void *ptr) {
 void debug() {
     char str[120];
 
+    sprintf(str, "------- FreeListDebug -------");
+    puts(str);
+
     void *cursor = freeListHead;
     while (cursor != NULL) {
         if (cursor == freeListHead) {
-            sprintf(str, "\tcursor %p size %d >>> freeListHead", cursor, get_block_size(cursor));
+            sprintf(str, "\t%p size %d >>> freeListHead", cursor, get_block_size(cursor));
         } else if (cursor == freeListTail) {
-            sprintf(str, "\tcursor %p size %d >>> freeListTail", cursor, get_block_size(cursor));
+            sprintf(str, "\t%p size %d >>> freeListTail", cursor, get_block_size(cursor));
         } else {
-            sprintf(str, "\tcursor %p size %d", cursor, get_block_size(cursor));
+            sprintf(str, "\t%p size %d", cursor, get_block_size(cursor));
         }
         puts(str);
         cursor = get_free_block_next(cursor);
     }
+
+    sprintf(str, "\n\t%p >>> lastAllocatedPtr", lastAllocatedPtr);
+    puts(str);
+
+    sprintf(str, "------- FreeListDebug Finished -------\n");
+    puts(str);
 }

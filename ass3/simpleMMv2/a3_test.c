@@ -40,16 +40,20 @@ int main(int argc, char *argv[])
 	for (i = 0; i < 32; i++)
 	{
 		c[i] = (char *)sma_malloc(1024);
+		/*
 		sprintf(str, "c[%d]: %p", i, c[i]);
 		puts(str);
+		*/
 	}
 
 	// Now deallocating some of the slots ..to free
 	for (i = 10; i < 18; i++)
 	{
 		sma_free(c[i]);
+		/*
 		sprintf(str, "Freeing c[%d]: %p", i, c[i]);
 		puts(str);
+		*/
 	}
 
 	// Allocate some storage .. this should go into the freed storage
@@ -75,8 +79,10 @@ int main(int argc, char *argv[])
 
 		if (limitafter > limitbefore) {
 			count++;
+			/*
 			sprintf(str, "count = %d, limit before: %llu, after: %llu", count, limitbefore, limitafter);
 			puts(str);
+			*/
 		}
 	}
 
@@ -141,8 +147,6 @@ int main(int argc, char *argv[])
 	//	Freeing cp2
 	sma_free(cp2);
 
-	return (0);
-
 	// Test 4: Next Fit Test
 	puts("Test 4: Check for Next Fit algorithm...");
 	// Sets Policy to Next Fit
@@ -172,6 +176,13 @@ int main(int argc, char *argv[])
 	{
 		puts("\t\t\t\t FAILED\n");
 	}
+	/*
+	sprintf(str, "C[8]: %p, CP3: %p", c[8], cp3);
+	puts(str);
+	sprintf(str, "C[19]: %p, CP4: %p", c[19], cp4);
+	puts(str);
+	*/
+	return (0);
 
 	// Test 5: Realloc test (with Next Fit)
 	puts("Test 5: Check for Reallocation with Next Fit...");

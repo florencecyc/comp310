@@ -23,6 +23,7 @@ static void *allocate_worst_fit(int size);
 static void *allocate_next_fit(int size);
 static void *allocate_block_from_freeList(void *ptr, int size);  // allocate block from freeList
 static void *get_largest_free_block();
+static void *get_next_fit_block();
 static void replace_block_freeList(void *ptr);  // free an allocated block
 static void append_block_freeList(void* block);
 
