@@ -42,13 +42,11 @@ void *sma_malloc(int size) {
         return NULL;
     }
 
-    if (currentPolicy == NEXT) {
-        lastAllocatedPtr = ptrMemory;
-    }
+    lastAllocatedPtr = ptrMemory;
     
     if (IS_DEBUG_MODE) {
         char str[100];
-        sprintf(str, "\tsma_malloc");
+        sprintf(str, "\tsma_malloc %d", size);
         puts(str);
         debug();
     }
@@ -70,7 +68,7 @@ void sma_free(void *ptr) {
 
     if (IS_DEBUG_MODE) {
         char str[100];
-        sprintf(str, "\tsma_free");
+        sprintf(str, "\tsma_free %d", get_block_size(ptr));
         puts(str);
         debug();
     }
@@ -83,7 +81,9 @@ void *sma_realloc(void *ptr, int newSize) {
 
     if (IS_DEBUG_MODE) {
         char str[60];
-        sprintf(str, "sma_realloc %p", ptr);
+        sprintf(str, "sma_realloc %p new size %d", ptr, newSize);
+        puts(str);
+        sprintf(str, "original data %s", *(char **)ptr);
         puts(str);
         debug();
     }
@@ -96,7 +96,7 @@ void *sma_realloc(void *ptr, int newSize) {
     else if (newSize < ptrSize) {
         set_block_header_footer(ptr, newSize, NOT_FREE);
         int freeBlockSize = ptrSize - newSize - BLOCK_HEADER_SIZE - BLOCK_FOOTER_SIZE;
-        if (freeBlockSize > 0) {
+        if (freeBlockSize >= 2 * sizeof(char *)) {
             void *fakeAllocatedBlock = ptr + newSize + BLOCK_FOOTER_SIZE + BLOCK_HEADER_SIZE;
             set_block_header_footer(fakeAllocatedBlock, freeBlockSize, NOT_FREE);
             replace_block_freeList(fakeAllocatedBlock);
@@ -104,8 +104,10 @@ void *sma_realloc(void *ptr, int newSize) {
         return ptr;
     }
     else {
-        replace_block_freeList(ptr);
         void *newPtr = sma_malloc(newSize);
+        memcpy(newPtr, ptr, ptrSize);
+
+        replace_block_freeList(ptr);
         return newPtr;
     }
 }
@@ -113,13 +115,12 @@ void *sma_realloc(void *ptr, int newSize) {
 void sma_mallopt(int policy)
 {
 	// Assigns the appropriate Policy
-	if (policy == 1)
-	{
+	if (policy == 1) {
 		currentPolicy = WORST;
 	}
-	else if (policy == 2)
-	{
+	else if (policy == 2) {
 		currentPolicy = NEXT;
+        lastAllocatedPtr = NULL;
 	}
 }
 
@@ -310,33 +311,29 @@ void *get_next_fit_block(int newBlockSize) {
         return NULL;
     }
     void *cursorPtr = freeListHead;
-    int cursorSize, cursorDistance, smallestDistance = -1;
-    void *nextFreeBlock = NULL;
+    void *nextFreeBlock = NULL, *restartFreeBlock = NULL;
+    int cursorSize;
 
     while (cursorPtr != NULL) {
         cursorSize = get_block_size(cursorPtr);
 
-        if (lastAllocatedPtr != NULL) {
-            if (cursorPtr > lastAllocatedPtr && cursorSize >= newBlockSize) {
-                nextFreeBlock = cursorPtr;
-                break;
-            }
-        } else {
-            if (cursorSize >= newBlockSize) {
-                nextFreeBlock = cursorPtr;
-                break;
-            }
+        if (restartFreeBlock == NULL && cursorSize >= newBlockSize && cursorPtr < lastAllocatedPtr) {
+            restartFreeBlock = cursorPtr;
         }
-
+        if (nextFreeBlock == NULL && cursorSize >= newBlockSize && cursorPtr >= lastAllocatedPtr) {
+            nextFreeBlock = cursorPtr;
+            break;
+        }
         cursorPtr = get_free_block_next(cursorPtr);
     }
 
     char str[100];
-    /*
-    sprintf(str, "lastAllocatedPtr %p, nextFreeBlock %p", lastAllocatedPtr, nextFreeBlock);
-    puts(str);
-    */
-    return nextFreeBlock;
+    if (IS_DEBUG_MODE) {
+        sprintf(str, "\tlastAllocatedPtr %p, nextFreeBlock %p, restartFreeBlock %p", lastAllocatedPtr, nextFreeBlock, restartFreeBlock);
+        puts(str);
+    }
+
+    return nextFreeBlock ? nextFreeBlock : restartFreeBlock;
 }
 
 // Replace allocated ptr to free ptr

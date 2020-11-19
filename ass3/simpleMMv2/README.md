@@ -1,4 +1,8 @@
 ### simpleMM v2
-* add footer for merging
-* support worst fit
-* Test 1,2,3,4 Passed
+#### Todo
+* `sma_mallinfo()`
+* `sma_realloc()` else case
+#### Done
+* Add footer for merging
+* Support worst & next fit
+* Tests All Passed
