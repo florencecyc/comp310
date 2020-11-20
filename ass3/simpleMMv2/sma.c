@@ -4,6 +4,7 @@
 #define MAX_TOP_FREE (128 * 1024)  // Max top free block size = 128 Kbytes
 #define BLOCK_HEADER_SIZE 2 * sizeof(int)  // state (0 for free, 1 for allocated) + length
 #define BLOCK_FOOTER_SIZE 2 * sizeof(int)  // length + state (0 for free, 1 for allocated)
+#define MIN_FREE_BLOCK_SIZE 1024  // 1KB
 
 #define FREE 1  // free block tag
 #define NOT_FREE 2  // allocated block tag
@@ -79,15 +80,6 @@ void *sma_realloc(void *ptr, int newSize) {
         return NULL;
     }
 
-    if (IS_DEBUG_MODE) {
-        char str[60];
-        sprintf(str, "sma_realloc %p new size %d", ptr, newSize);
-        puts(str);
-        sprintf(str, "original data %s", *(char **)ptr);
-        puts(str);
-        debug();
-    }
-
     int ptrSize = get_block_size(ptr);
 
     if (newSize == ptrSize) {
@@ -96,18 +88,31 @@ void *sma_realloc(void *ptr, int newSize) {
     else if (newSize < ptrSize) {
         set_block_header_footer(ptr, newSize, NOT_FREE);
         int freeBlockSize = ptrSize - newSize - BLOCK_HEADER_SIZE - BLOCK_FOOTER_SIZE;
-        if (freeBlockSize >= 2 * sizeof(char *)) {
+        if (freeBlockSize >= 2 * sizeof(char *) + MIN_FREE_BLOCK_SIZE) {
             void *fakeAllocatedBlock = ptr + newSize + BLOCK_FOOTER_SIZE + BLOCK_HEADER_SIZE;
             set_block_header_footer(fakeAllocatedBlock, freeBlockSize, NOT_FREE);
             replace_block_freeList(fakeAllocatedBlock);
+            // Update SMA Info
+            totalAllocatedSize += freeBlockSize;
+            totalFreeSize -= (freeBlockSize + BLOCK_HEADER_SIZE + BLOCK_FOOTER_SIZE);
+            totalFreeSize += (ptrSize - newSize);
         }
+        else {
+            set_block_header_footer(ptr, ptrSize, NOT_FREE);
+        }
+        // Update SMA Info
+        totalAllocatedSize += (newSize - ptrSize);
+
         return ptr;
     }
     else {
-        void *newPtr = sma_malloc(newSize);
-        memcpy(newPtr, ptr, ptrSize);
+        char ptrData[ptrSize];
+        memcpy(ptrData, ptr, ptrSize);
 
         replace_block_freeList(ptr);
+        void *newPtr = sma_malloc(newSize);
+        memcpy(newPtr, ptrData, ptrSize);
+
         return newPtr;
     }
 }
@@ -155,9 +160,15 @@ void *allocate_from_sbrk(int size) {
         tailSize = freeListTail ? get_block_size(freeListTail) : get_block_size(freeListHead);
     }
     int excessSize = MAX_TOP_FREE;
-    if (tailSize > 0) {
+    if (tailSize > 0) {  // freeListHead != NULL
         excessSize += (size - tailSize);
+        totalFreeSize += (MAX_TOP_FREE - tailSize);
+    } else {
+        // Update SMA Info
+        totalFreeSize = MAX_TOP_FREE;
     }
+    // Update SMA Info
+    totalAllocatedSize += size;
 
     void *sbrkHead = sbrk(2 * BLOCK_HEADER_SIZE + 2 * BLOCK_FOOTER_SIZE + size + excessSize);
 
@@ -184,11 +195,6 @@ void *allocate_from_sbrk(int size) {
     freeBlock = newBlock + size + BLOCK_HEADER_SIZE + BLOCK_FOOTER_SIZE;
     set_block_header_footer(freeBlock, MAX_TOP_FREE, FREE);
     append_block_freeList(freeBlock);
-
-    if (newBlock != NULL) {
-        totalAllocatedSize += size;
-        totalFreeSize += excessSize;
-    }
 
     return newBlock;
 }
@@ -239,13 +245,14 @@ void *allocate_block_from_freeList(void *freeBlock, int newBlockSize) {
     void *freeNext = get_free_block_next(freeBlock);
 
     void *newBlock = freeBlock;
+    void *newFreeBlock = NULL;
 
     set_block_header_footer(newBlock, newBlockSize, NOT_FREE);
 
     int newFreeBlockSize = freeBlockSize - newBlockSize - BLOCK_FOOTER_SIZE - BLOCK_HEADER_SIZE;
 
-    if (newFreeBlockSize >= 2 * sizeof(char *)) {
-        void *newFreeBlock = freeBlock + newBlockSize + BLOCK_FOOTER_SIZE + BLOCK_HEADER_SIZE;
+    if (newFreeBlockSize >= 2 * sizeof(char *) + MIN_FREE_BLOCK_SIZE) {
+        newFreeBlock = freeBlock + newBlockSize + BLOCK_FOOTER_SIZE + BLOCK_HEADER_SIZE;
         set_free_block_prev(newFreeBlock, freePrev);
         set_free_block_next(newFreeBlock, freeNext);
 
@@ -259,8 +266,12 @@ void *allocate_block_from_freeList(void *freeBlock, int newBlockSize) {
             freeListTail = newFreeBlock;
         }
         set_block_header_footer(newFreeBlock, newFreeBlockSize, FREE);
+        
+        totalFreeSize -= (newBlockSize + BLOCK_HEADER_SIZE + BLOCK_FOOTER_SIZE);
     }
     else {
+        set_block_header_footer(newBlock, freeBlockSize, NOT_FREE);
+
         if (freeListHead == freeBlock) {
             freeListHead = NULL;
         }
@@ -272,15 +283,12 @@ void *allocate_block_from_freeList(void *freeBlock, int newBlockSize) {
             set_free_block_prev(freeNext, freePrev);
             set_free_block_next(freePrev, freeNext);
         }
+
+        totalFreeSize -= freeBlockSize;
     }
 
-    if (newBlock != NULL) {
-        totalAllocatedSize += newBlockSize;
-
-        if (newFreeBlockSize >= 2 * sizeof(char *)) {
-            totalFreeSize -= newBlockSize;
-        }
-    }
+    // Update SMA Info
+    totalAllocatedSize += newBlockSize;
 
     return newBlock;
 }
@@ -355,7 +363,7 @@ void replace_block_freeList(void *ptr) {
     else {
         if (ptr < freeListHead) {
             if ((ptr + ptrSize + BLOCK_FOOTER_SIZE + BLOCK_HEADER_SIZE) == freeListHead) {
-                merge_two_blocks(ptr, freeListHead);
+                merge_two_free_blocks(ptr, freeListHead);
             } else {
                 set_block_header_footer(ptr, ptrSize, FREE);
                 set_free_block_prev(ptr, NULL);
@@ -369,7 +377,7 @@ void replace_block_freeList(void *ptr) {
             int prevBlockTag = *(int *)(ptr - BLOCK_HEADER_SIZE - BLOCK_FOOTER_SIZE);
             if (freeListTail == NULL) {
                 if (prevBlockTag == FREE) {
-                    merge_two_blocks(freeListHead, ptr);
+                    merge_two_free_blocks(freeListHead, ptr);
                 } else {
                     set_block_header_footer(ptr, ptrSize, FREE);
                     set_free_block_prev(ptr, freeListHead);
@@ -386,10 +394,10 @@ void replace_block_freeList(void *ptr) {
                             int nextBlockTag = *(int *)(ptr + ptrSize + BLOCK_FOOTER_SIZE);
 
                             if (nextBlockTag == FREE) {
-                                merge_two_blocks(ptr, freeCursorNext);
+                                merge_two_free_blocks(ptr, freeCursorNext);
                             }
                             if (prevBlockTag == FREE) {
-                                merge_two_blocks(freeCursor, ptr);
+                                merge_two_free_blocks(freeCursor, ptr);
                             } 
                             if (nextBlockTag == NOT_FREE && prevBlockTag == NOT_FREE) {
                                 set_block_header_footer(ptr, ptrSize, FREE);
@@ -406,7 +414,7 @@ void replace_block_freeList(void *ptr) {
                     }
                 } else {
                     if (prevBlockTag == FREE) {
-                        merge_two_blocks(freeListTail, ptr);
+                        merge_two_free_blocks(freeListTail, ptr);
                     } else {
                         set_free_block_next(freeListTail, ptr);
                         set_free_block_prev(ptr, freeListTail);
@@ -416,7 +424,7 @@ void replace_block_freeList(void *ptr) {
             }
         }
     }
-    totalAllocatedSize -= ptrSize;
+    // Update SMA Info
     totalFreeSize += ptrSize;
 }
 
@@ -443,7 +451,7 @@ void append_block_freeList(void *ptr) {
     }
 }
 
-void merge_two_blocks(void *formerPtr, void *latterPtr) {    
+void merge_two_free_blocks(void *formerPtr, void *latterPtr) {    
     int formerSize = get_block_size(formerPtr);
     int latterSize = get_block_size(latterPtr);
     int latterTag = *(int *)(latterPtr - BLOCK_HEADER_SIZE);
@@ -475,11 +483,14 @@ void merge_two_blocks(void *formerPtr, void *latterPtr) {
         freeListTail = formerPtr;
     }
 
-    totalFreeSize += (BLOCK_FOOTER_SIZE + BLOCK_HEADER_SIZE);
+    totalFreeSize += (BLOCK_HEADER_SIZE + BLOCK_FOOTER_SIZE);
 
     if (mergeSize > MAX_TOP_FREE) {
         set_block_header_footer(formerPtr, MAX_TOP_FREE, FREE);
         int brkState = brk(sbrk(0) - (mergeSize - MAX_TOP_FREE));
+        if (brkState == 0) {
+            totalFreeSize -= (mergeSize - MAX_TOP_FREE);
+        }
 
         if (IS_DEBUG_MODE) {
             char str[60];
@@ -490,8 +501,6 @@ void merge_two_blocks(void *formerPtr, void *latterPtr) {
             }
             puts(str);
         }
-
-        totalFreeSize -= (mergeSize - MAX_TOP_FREE);
     }
 }
 
@@ -541,10 +550,11 @@ void *get_free_block_next(void *ptr) {
 void debug() {
     char str[120];
 
-    sprintf(str, "------- FreeListDebug -------");
+    sprintf(str, "\n------- FreeListDebug -------");
     puts(str);
 
     void *cursor = freeListHead;
+    int totalFreeListSize = 0;
     while (cursor != NULL) {
         if (cursor == freeListHead) {
             sprintf(str, "\t%p size %d >>> freeListHead", cursor, get_block_size(cursor));
@@ -552,11 +562,14 @@ void debug() {
             sprintf(str, "\t%p size %d >>> freeListTail", cursor, get_block_size(cursor));
         } else {
             sprintf(str, "\t%p size %d", cursor, get_block_size(cursor));
-        }
+        }        
         puts(str);
+
+        totalFreeListSize += get_block_size(cursor);
+
         cursor = get_free_block_next(cursor);
     }
 
-    sprintf(str, "\n\t%p >>> lastAllocatedPtr", lastAllocatedPtr);
+    sprintf(str, "\n\tTotalFreeListSize %d\n", totalFreeListSize);
     puts(str);
 }

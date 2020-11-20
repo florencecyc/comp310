@@ -17,22 +17,24 @@ void sma_mallinfo();
 void *sma_realloc(void *ptr, int size);
 
 //  Private Functions declaration
-static void *allocate_from_sbrk(int size);
-static void *allocate_from_freeList(int size);
-static void *allocate_worst_fit(int size);
-static void *allocate_next_fit(int size);
-static void *allocate_block_from_freeList(void *ptr, int size);  // allocate block from freeList
-static void *get_largest_free_block();
-static void *get_next_fit_block();
-static void replace_block_freeList(void *ptr);  // free an allocated block
-static void append_block_freeList(void* block);
+void *allocate_from_sbrk(int size);
+void *allocate_from_freeList(int size);
+void *allocate_worst_fit(int size);
+void *allocate_next_fit(int size);
+void *allocate_block_from_freeList(void *ptr, int size);  // allocate block from freeList
+void replace_block_freeList(void *ptr);  // free an allocated block
+void append_block_freeList(void* block);
 
-static int get_block_size(void *ptr);
-static void *get_free_block_prev(void *ptr);
-static void *get_free_block_next(void *ptr);
+void *get_largest_free_block();
+void *get_next_fit_block();
 
-static void set_block_header_footer(void *block, int size, int tag);
-static void set_free_block_next(void *block, void *next);
-static void set_free_block_prev(void *block, void *prev);
-static void merge_two_blocks(void *formerPtr, void *latterPtr);
-static void debug();
+int get_block_size(void *ptr);
+void *get_free_block_prev(void *ptr);
+void *get_free_block_next(void *ptr);
+
+void set_block_header_footer(void *block, int size, int tag);
+void set_free_block_next(void *block, void *next);
+void set_free_block_prev(void *block, void *prev);
+void merge_two_free_blocks(void *formerPtr, void *latterPtr);
+
+void debug();

@@ -90,8 +90,9 @@ int main(int argc, char *argv[])
 	sma_mallopt(WORST_FIT);
 
 	// Allocating 512 kbytes of memory..
-	for (i = 0; i < 32; i++)
+	for (i = 0; i < 32; i++) {
 		c2[i] = (int *)sma_malloc(16 * 1024);
+	}
 
 	// Now deallocating some of the slots ..to free
 	// One chunk of 5x16 kbytes
@@ -196,6 +197,7 @@ int main(int argc, char *argv[])
 	puts("Test 6: Print SMA Statistics...");
 	puts("===============================");
 	sma_mallinfo();
+	debug();
 
 	return (0);
 }
