@@ -1,8 +1,4 @@
-### simpleMM v2
-#### Todo
-* `sma_mallinfo()`
-* `sma_realloc()` else case
-#### Done
-* Add footer for merging
-* Support worst & next fit
-* Tests All Passed
+### Simple Meoory Allocator
+#### How To Test
+1. `make sma`
+2. `./sma.exe`
